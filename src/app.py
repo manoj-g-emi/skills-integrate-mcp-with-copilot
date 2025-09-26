@@ -8,6 +8,8 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
+from typing import Optional, List
 import os
 from pathlib import Path
 
@@ -77,6 +79,45 @@ activities = {
     }
 }
 
+# In-memory storage for students, courses, enrollment, and attendance
+students = {}
+courses = {}
+enrollments = {}
+attendance = {}
+payments = {}
+
+# Pydantic models for data validation
+class Student(BaseModel):
+    name: str
+    email: str
+    grade: str
+    phone: Optional[str] = None
+
+class Course(BaseModel):
+    name: str
+    description: str
+    schedule: str
+    max_participants: int
+    instructor: Optional[str] = None
+
+class Enrollment(BaseModel):
+    student_email: str
+    course_name: str
+    enrollment_date: str
+
+class AttendanceRecord(BaseModel):
+    student_email: str
+    course_name: str
+    date: str
+    present: bool
+
+class Payment(BaseModel):
+    student_email: str
+    amount: float
+    course_name: str
+    payment_date: str
+    status: str
+
 
 @app.get("/")
 def root():
@@ -130,3 +171,128 @@ def unregister_from_activity(activity_name: str, email: str):
     # Remove student
     activity["participants"].remove(email)
     return {"message": f"Unregistered {email} from {activity_name}"}
+
+
+# Admin API Endpoints
+
+# Student Management
+@app.get("/admin/students")
+def get_all_students():
+    """Get all students"""
+    return students
+
+@app.post("/admin/students")
+def create_student(student: Student):
+    """Create a new student"""
+    if student.email in students:
+        raise HTTPException(status_code=400, detail="Student already exists")
+    students[student.email] = student.dict()
+    return {"message": f"Student {student.name} created successfully"}
+
+@app.put("/admin/students/{student_email}")
+def update_student(student_email: str, student: Student):
+    """Update a student's information"""
+    if student_email not in students:
+        raise HTTPException(status_code=404, detail="Student not found")
+    students[student_email] = student.dict()
+    return {"message": f"Student {student.name} updated successfully"}
+
+@app.delete("/admin/students/{student_email}")
+def delete_student(student_email: str):
+    """Delete a student"""
+    if student_email not in students:
+        raise HTTPException(status_code=404, detail="Student not found")
+    del students[student_email]
+    return {"message": f"Student {student_email} deleted successfully"}
+
+# Course Management  
+@app.get("/admin/courses")
+def get_all_courses():
+    """Get all courses"""
+    return courses
+
+@app.post("/admin/courses")
+def create_course(course: Course):
+    """Create a new course"""
+    if course.name in courses:
+        raise HTTPException(status_code=400, detail="Course already exists")
+    courses[course.name] = course.dict()
+    return {"message": f"Course {course.name} created successfully"}
+
+@app.put("/admin/courses/{course_name}")
+def update_course(course_name: str, course: Course):
+    """Update a course"""
+    if course_name not in courses:
+        raise HTTPException(status_code=404, detail="Course not found")
+    courses[course_name] = course.dict()
+    return {"message": f"Course {course.name} updated successfully"}
+
+@app.delete("/admin/courses/{course_name}")
+def delete_course(course_name: str):
+    """Delete a course"""
+    if course_name not in courses:
+        raise HTTPException(status_code=404, detail="Course not found")
+    del courses[course_name]
+    return {"message": f"Course {course_name} deleted successfully"}
+
+# Enrollment Management
+@app.get("/admin/enrollments")
+def get_all_enrollments():
+    """Get all enrollments"""
+    return list(enrollments.values())
+
+@app.post("/admin/enrollments")
+def create_enrollment(enrollment: Enrollment):
+    """Enroll a student in a course"""
+    enrollment_key = f"{enrollment.student_email}_{enrollment.course_name}"
+    if enrollment_key in enrollments:
+        raise HTTPException(status_code=400, detail="Student already enrolled in this course")
+    enrollments[enrollment_key] = enrollment.dict()
+    return {"message": f"Student {enrollment.student_email} enrolled in {enrollment.course_name}"}
+
+@app.delete("/admin/enrollments/{student_email}/{course_name}")
+def delete_enrollment(student_email: str, course_name: str):
+    """Remove a student's enrollment"""
+    enrollment_key = f"{student_email}_{course_name}"
+    if enrollment_key not in enrollments:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+    del enrollments[enrollment_key]
+    return {"message": f"Student {student_email} unenrolled from {course_name}"}
+
+# Attendance Management
+@app.get("/admin/attendance")
+def get_all_attendance():
+    """Get all attendance records"""
+    return list(attendance.values())
+
+@app.post("/admin/attendance")
+def record_attendance(attendance_record: AttendanceRecord):
+    """Record attendance for a student"""
+    attendance_key = f"{attendance_record.student_email}_{attendance_record.course_name}_{attendance_record.date}"
+    attendance[attendance_key] = attendance_record.dict()
+    return {"message": f"Attendance recorded for {attendance_record.student_email}"}
+
+@app.get("/admin/attendance/{student_email}")
+def get_student_attendance(student_email: str):
+    """Get attendance records for a specific student"""
+    student_attendance = [record for record in attendance.values() if record["student_email"] == student_email]
+    return student_attendance
+
+# Payment Management
+@app.get("/admin/payments")
+def get_all_payments():
+    """Get all payment records"""
+    return list(payments.values())
+
+@app.post("/admin/payments")
+def create_payment(payment: Payment):
+    """Record a payment"""
+    payment_key = f"{payment.student_email}_{payment.course_name}_{payment.payment_date}"
+    payments[payment_key] = payment.dict()
+    return {"message": f"Payment of ${payment.amount} recorded for {payment.student_email}"}
+
+@app.get("/admin/payments/{student_email}")
+def get_student_payments(student_email: str):
+    """Get payment records for a specific student"""
+    student_payments = [record for record in payments.values() if record["student_email"] == student_email]
+    return student_payments
